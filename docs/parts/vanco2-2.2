@@ -1,17 +1,23 @@
-version in progress
-2.1
-The system will operate for two main purposes which include a workshop and a café. Members of the labCafe community utilize a membership card that provides access to both areas. The membership card acts as an authentication method for various services such as entering the workshop, using labCafe tools and equipment (e.g. 3D printers), and applying membership benefits in the form of discounts in the café. It ensures that members can easily verify their identity and gain access without manual intervention. 
+2.1 System Context and Overview
+The system serves two primary functions: managing a workshop and a café. Members of the LabCafe community use a membership card to access both areas. This membership card acts as an authentication method for various services, such as entering the workshop, operating LabCafe equipment (specifically 3D printers), and applying membership benefits like café discounts. The card ensures that members can easily verify their identity and gain access to services without manual intervention.
 
-The entire system is centrally controled with backend processes and server-client communication managing access rights and usage tracking. While the current system is functional in a prototype form, further optimizations are required to enhance performance, particularly in access speed and control logic.
+Currently, the system operates in a prototype form but requires optimizations to improve performance, particularly in access speed and control logic.
 
 2.2 System Functionality
-The system provides several core functionalities:
+The system is composed of several key components and integrates various tools and services:
 
-Access control for workshop
-...
+Printer Management and Order Processing
+The internal system, Otello, manages the list of printers and processes orders. The system is built on CodeIgniter (PHP, MySQL). Member and machine access data are stored in the Fabman database. Memberships are purchased through WooCommerce (WordPress), with billing handled via the WooCommerce Subscriptions module. Membership information is synchronized with Fabman.io via Make.com.
 
-Equipment users control
-...
+Core functionalities include:
 
-Cafe discounts
-...
+Access Control for Workshop
+When a member taps their card on the access module at the workshop door, the module sends an endpoint request (including the card number) to a central server on the Otello system. The server retrieves access rights from Fabman, determining the member's membership type. For instance, hobby members have access only on Wednesdays, while maker members have daily access. Based on the response, the module signals access approval, denial, or an error through three LED lights. LabCafe uses custom hardware for this access module.
+
+Equipment User Control
+The Fabman Bridge controls machine access, verifying if the user has been trained on the machine via their RFID card. If authorized, the Fabman Bridge powers on the equipment. Each 3D printer is equipped with a Raspberry Pi Zero 2W running OctoPrint, which monitors the printer's status and active print jobs. A central server (running on a Raspberry Pi) manages these printers and their status. Users must "Acquire" a print job within five minutes of starting, or the job will be paused. The system tracks print jobs and their authors for billing purposes, with monthly consumption calculated based on usage. Printer management and configuration are handled via the Otello system.
+
+Café Discounts
+A POS (Point of Sale) terminal tracks members' café purchases using their membership card. Custom hardware retrieves the member's details and stores the current valid name on the server. This information is retrieved by PapayaPOS during checkout. Once the transaction is processed in PapayaPOS, the account information is saved in Airtable.
+
+The member presents their card at the bar when paying for a meal. The LabPOS terminal verifies the member’s identity and displays their name. The bartender processes the payment in PapayaPOS, which triggers a call to a predefined endpoint in the Otello system.
