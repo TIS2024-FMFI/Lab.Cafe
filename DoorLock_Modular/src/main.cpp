@@ -10,6 +10,8 @@
 #include <WebServer.h>
 #include <ESPmDNS.h>
 #include <Preferences.h>
+#include <unordered_map>
+#include <ctime>
 
 WebServer server(80);
 Preferences preferences;
@@ -54,6 +56,8 @@ void setup() {
   
   // Initialize NVS
   preferences.begin("doorlock", false);
+  preferences.begin("cardCache", false);
+  loadCache();
 
   // Check if WiFi is configured
   if (!preferences.isKey("ssid")) {
@@ -255,8 +259,78 @@ void openDoorLock() {
   digitalWrite(MOSFET, LOW);
 }
 
+struct CacheEntry {
+  bool hasAccess;
+  time_t lastUsed; // Timestamp of the last usage
+};
+
+// Global cache for cardID and member access
+std::unordered_map<String, CacheEntry> cardCache;
+const time_t SEVEN_DAYS = 7 * 24 * 60 * 60; // 7 days in seconds
+Preferences preferences;
+
+void saveCache() {
+  preferences.begin("cardCache", false);
+  preferences.clear(); // Clear old cache
+
+  for (const auto& entry : cardCache) {
+    String key = entry.first;
+    CacheEntry cacheEntry = entry.second;
+
+    // Save each cardID's data
+    preferences.putBool(key + "_access", cacheEntry.hasAccess);
+    preferences.putULong(key + "_lastUsed", (unsigned long)cacheEntry.lastUsed);
+  }
+
+  preferences.end();
+  Serial.println("Cache saved to storage.");
+}
+
+void loadCache() {
+  preferences.begin("cardCache", true);
+
+  // Iterate over all keys in preferences
+  size_t index = 0;
+  while (true) {
+    String key = preferences.getKey(index);
+    if (key.isEmpty()) break; // No more keys
+
+    if (key.endsWith("_access")) {
+      String cardID = key.substring(0, key.length() - 7); // Remove "_access"
+      bool hasAccess = preferences.getBool(key.c_str());
+      unsigned long lastUsed = preferences.getULong((cardID + "_lastUsed").c_str(), 0);
+
+      // Add to cache
+      cardCache[cardID] = {hasAccess, (time_t)lastUsed};
+    }
+    index++;
+  }
+
+  preferences.end();
+  Serial.println("Cache loaded from storage.");
+}
+
+// Function to clean up stale cache entries
+void cleanCache() {
+  time_t currentTime = time(nullptr); // Get current time
+  for (auto it = cardCache.begin(); it != cardCache.end(); ) {
+    if (currentTime - it->second.lastUsed > SEVEN_DAYS) {
+      Serial.print("Removing stale cache entry for card: ");
+      Serial.println(it->first);
+
+      preferences.begin("cardCache", false);
+      preferences.remove(it->first + "_access");
+      preferences.remove(it->first + "_lastUsed");
+      preferences.end();
+
+      it = cardCache.erase(it); // Remove stale entry
+    } else {
+      ++it; // Move to the next entry
+    }
+  }
+}
+
 void CheckCard() {
-  check_wifi();
   if (rdm6300.get_new_tag_id()) {
     int cardCode = rdm6300.get_tag_id(); // Get the raw card code as a uint32_t
     String cardID = "01" + String(cardCode, HEX); // Convert it to a string
@@ -264,16 +338,34 @@ void CheckCard() {
     Serial.print("Card ID: ");
     Serial.println(cardID);
 
-    String memberID = getMemberID(cardID);
-    if (memberID != "" && checkMemberAccess(memberID)) {
-      Leds_Green();
-      openDoorLock();
-    }
-    else {
-      Leds_Red();
-      delay(1000);
+    // Check if the cardID is already in the cache
+    if (cardCache.find(cardID) != cardCache.end()) {
+      // Use cached result
+      Serial.println("Card found in cache.");
+      cardCache[cardID].lastUsed = time(nullptr); // Update last used timestamp
+      if (cardCache[cardID].hasAccess) {
+        Leds_Green();
+        openDoorLock();
+      } else {
+        Leds_Red();
+        delay(1000);
+      }
+    } else {
+      check_wifi();
+      String memberID = getMemberID(cardID);
+      if (memberID != "" && checkMemberAccess(memberID)) {
+        Leds_Green();
+        openDoorLock();
+        cardCache[cardID] = {hasAccess, time(nullptr)};
+        saveCache();
+      }
+      else {
+        Leds_Red();
+        delay(1000);
+      }
     }
   }
+  cleanCache(); // Clean up stale entries
   delay(10);
 }
 
