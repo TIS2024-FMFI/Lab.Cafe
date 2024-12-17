@@ -6,10 +6,11 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <ESP32Ping.h>
-
 #include <WebServer.h>
 #include <ESPmDNS.h>
 #include <Preferences.h>
+#include <FS.h>
+#include <SPIFFS.h>
 #include <unordered_map>
 #include <ctime>
 
@@ -22,8 +23,16 @@ Preferences preferences;
 #define RGB_STRIP_PIN 5
 #define NUM_LEDS 3
 
+#define CACHE_FILE "/cache.json"
+struct CacheEntry {
+  bool hasAccess;
+  time_t lastUsed;
+};
+
 const char* API_KEY = "REPLACE_WITH_YOUR_API_KEY"; // Replace with your personal API key
 const char* BEARER_HEADER = "Bearer ";
+std::unordered_map<String, CacheEntry> cardCache;
+const time_t SEVEN_DAYS = 7 * 24 * 60 * 60;
 
 // Global Variables
 Rdm6300 rdm6300;
@@ -46,6 +55,10 @@ void Leds_Green();
 void Leds_Red();
 void Leds_Yellow();
 void pingGoogle();
+void loadCacheFromFile();
+void saveCacheToFile();
+void cleanCache();
+void initializeSPIFFS();
 
 int door_timer = 5000;
 
@@ -56,8 +69,8 @@ void setup() {
   
   // Initialize NVS
   preferences.begin("doorlock", false);
-  preferences.begin("cardCache", false);
-  loadCache();
+  initializeSPIFFS();
+  loadCacheFromFile();
 
   // Check if WiFi is configured
   if (!preferences.isKey("ssid")) {
@@ -227,6 +240,9 @@ String getMemberID(String cardID) {
 }
 
 bool checkMemberAccess(String memberID) {
+    if (memberID == "") {
+        return false;
+    }
     HTTPClient http;
     DynamicJsonDocument doc(1024);
 
@@ -259,75 +275,83 @@ void openDoorLock() {
   digitalWrite(MOSFET, LOW);
 }
 
-struct CacheEntry {
-  bool hasAccess;
-  time_t lastUsed; // Timestamp of the last usage
-};
-
-// Global cache for cardID and member access
-std::unordered_map<String, CacheEntry> cardCache;
-const time_t SEVEN_DAYS = 7 * 24 * 60 * 60; // 7 days in seconds
-Preferences preferences;
-
-void saveCache() {
-  preferences.begin("cardCache", false);
-  preferences.clear(); // Clear old cache
-
-  for (const auto& entry : cardCache) {
-    String key = entry.first;
-    CacheEntry cacheEntry = entry.second;
-
-    // Save each cardID's data
-    preferences.putBool(key + "_access", cacheEntry.hasAccess);
-    preferences.putULong(key + "_lastUsed", (unsigned long)cacheEntry.lastUsed);
+void initializeSPIFFS() {
+  if (!SPIFFS.begin(true)) {
+    Serial.println("Failed to mount SPIFFS. Formatting...");
+    while (true) { delay(1000); }
   }
-
-  preferences.end();
-  Serial.println("Cache saved to storage.");
+  Serial.println("SPIFFS mounted successfully.");
 }
 
-void loadCache() {
-  preferences.begin("cardCache", true);
-
-  // Iterate over all keys in preferences
-  size_t index = 0;
-  while (true) {
-    String key = preferences.getKey(index);
-    if (key.isEmpty()) break; // No more keys
-
-    if (key.endsWith("_access")) {
-      String cardID = key.substring(0, key.length() - 7); // Remove "_access"
-      bool hasAccess = preferences.getBool(key.c_str());
-      unsigned long lastUsed = preferences.getULong((cardID + "_lastUsed").c_str(), 0);
-
-      // Add to cache
-      cardCache[cardID] = {hasAccess, (time_t)lastUsed};
-    }
-    index++;
+void loadCacheFromFile() {
+  if (!SPIFFS.exists(CACHE_FILE)) {
+    Serial.println("No cache file found.");
+    return;
   }
 
-  preferences.end();
-  Serial.println("Cache loaded from storage.");
+  File file = SPIFFS.open(CACHE_FILE, "r");
+  if (!file) {
+    Serial.println("Failed to open cache file for reading.");
+    return;
+  }
+
+  DynamicJsonDocument doc(2048);
+  DeserializationError error = deserializeJson(doc, file);
+  if (error) {
+    Serial.print("Failed to parse cache file: ");
+    Serial.println(error.c_str());
+    file.close();
+    return;
+  }
+
+  for (JsonPair kv : doc.as<JsonObject>()) {
+    String cardID = kv.key().c_str();
+    JsonObject entry = kv.value();
+    cardCache[cardID] = { entry["hasAccess"], entry["lastUsed"] };
+  }
+
+  file.close();
+  Serial.println("Cache loaded successfully from file.");
 }
 
-// Function to clean up stale cache entries
+void saveCacheToFile() {
+  DynamicJsonDocument doc(2048);
+
+  for (const auto& kv : cardCache) {
+    JsonObject entry = doc.createNestedObject(kv.first);
+    entry["hasAccess"] = kv.second.hasAccess;
+    entry["lastUsed"] = kv.second.lastUsed;
+  }
+
+  File file = SPIFFS.open(CACHE_FILE, "w");
+  if (!file) {
+    Serial.println("Failed to open cache file for writing.");
+    return;
+  }
+
+  if (serializeJson(doc, file) == 0) {
+    Serial.println("Failed to write cache data to file.");
+  } else {
+    Serial.println("Cache saved successfully to file.");
+  }
+
+  file.close();
+}
+
 void cleanCache() {
-  time_t currentTime = time(nullptr); // Get current time
-  for (auto it = cardCache.begin(); it != cardCache.end(); ) {
+  time_t currentTime = time(nullptr);
+
+  for (auto it = cardCache.begin(); it != cardCache.end();) {
     if (currentTime - it->second.lastUsed > SEVEN_DAYS) {
-      Serial.print("Removing stale cache entry for card: ");
+      Serial.print("Removing stale card: ");
       Serial.println(it->first);
-
-      preferences.begin("cardCache", false);
-      preferences.remove(it->first + "_access");
-      preferences.remove(it->first + "_lastUsed");
-      preferences.end();
-
-      it = cardCache.erase(it); // Remove stale entry
+      it = cardCache.erase(it); // Remove from memory
     } else {
-      ++it; // Move to the next entry
+      ++it;
     }
   }
+
+  saveCacheToFile(); // Save updated cache to file
 }
 
 void CheckCard() {
@@ -343,6 +367,8 @@ void CheckCard() {
       // Use cached result
       Serial.println("Card found in cache.");
       cardCache[cardID].lastUsed = time(nullptr); // Update last used timestamp
+      saveCacheToFile();
+
       if (cardCache[cardID].hasAccess) {
         Leds_Green();
         openDoorLock();
@@ -352,20 +378,23 @@ void CheckCard() {
       }
     } else {
       check_wifi();
+      Serial.println("Card not found in cache. Querying backend...");
       String memberID = getMemberID(cardID);
-      if (memberID != "" && checkMemberAccess(memberID)) {
+      bool hasAccess = false;
+      hasAccess = checkMemberAccess(memberID);
+      cardCache[cardID] = {hasAccess, time(nullptr)};
+      saveCacheToFile();
+
+      if (hasAccess) {
         Leds_Green();
         openDoorLock();
-        cardCache[cardID] = {hasAccess, time(nullptr)};
-        saveCache();
-      }
-      else {
+      } else {
         Leds_Red();
         delay(1000);
       }
     }
   }
-  cleanCache(); // Clean up stale entries
+  cleanCache();
   delay(10);
 }
 
