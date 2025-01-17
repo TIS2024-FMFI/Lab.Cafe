@@ -1,0 +1,51 @@
+{
+    "version": 1,
+    "author": "Door Lock Test",
+    "editor": "wokwi",
+    "parts": [
+      {
+        "type": "board-esp32-devkit-v1",
+        "id": "esp",
+        "top": 0,
+        "left": 0,
+        "attrs": {}
+      },
+      {
+        "type": "wokwi-neopixel-strip",
+        "id": "rgb1",
+        "top": 100,
+        "left": 100,
+        "attrs": {
+          "length": "3"
+        }
+      },
+      {
+        "type": "wokwi-rdm6300",
+        "id": "rfid1",
+        "top": 150,
+        "left": 100,
+        "attrs": {
+          "cards": "1A2B3C4D,5E6F7G8H,9A8B7C6D"
+        }
+      },
+      {
+        "type": "wokwi-resistor",
+        "id": "r1",
+        "top": 200,
+        "left": 100,
+        "attrs": {
+          "value": "10000"
+        }
+      }
+    ],
+    "connections": [
+      ["esp:GND", "rgb1:GND", "black"],
+      ["esp:5V", "rgb1:VDD", "red"],
+      ["esp:5", "rgb1:DIN", "green"],
+      ["esp:4", "rfid1:RX", "yellow"],
+      ["esp:GND", "rfid1:GND", "black"],
+      ["esp:5V", "rfid1:VCC", "red"],
+      ["esp:15", "r1:1", "blue"],
+      ["r1:2", "esp:GND", "black"]
+    ]
+  }

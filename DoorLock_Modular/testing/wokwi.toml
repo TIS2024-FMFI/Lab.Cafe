@@ -1,0 +1,30 @@
+[wokwi]
+version = 1
+firmware = "esp32-doorlock.ino"
+elf = "build/esp32-doorlock.ino.elf"
+
+# Hardware configuration
+[[pin]]
+name = "RGB Strip"
+number = 5
+
+[[pin]]
+name = "RFID RX"
+number = 4
+
+[[pin]]
+name = "MOSFET Gate"
+number = 15
+
+# RFID Cards for testing
+[[rfid_card]]
+name = "Valid Card"
+id = "1A2B3C4D"
+
+[[rfid_card]]
+name = "Invalid Card"
+id = "5E6F7G8H"
+
+[[rfid_card]]
+name = "Cached Valid Card"
+id = "9A8B7C6D"
