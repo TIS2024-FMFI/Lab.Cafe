@@ -1,4 +1,4 @@
-<h1 align="center">DoorLock-2023</h1>
+<h1 align="center">DoorLock</h1>
 
 <p align="center">
   <strong>An ESP32-based RFID Door Lock System with Fabman API Integration and Custom WiFi Configuration</strong>
