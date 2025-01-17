@@ -17,7 +17,6 @@
 WebServer server(80);
 Preferences preferences;
 
-// Constants and Definitions
 #define RDM6300_RX_PIN 4
 #define MOSFET 15
 #define RGB_STRIP_PIN 5
@@ -29,17 +28,15 @@ struct CacheEntry {
   time_t lastUsed;
 };
 
-const char* API_KEY = "REPLACE_WITH_YOUR_API_KEY"; // Replace with your personal API key
+const char* API_KEY = "REPLACE_WITH_YOUR_API_KEY"
 const char* BEARER_HEADER = "Bearer ";
 std::unordered_map<String, CacheEntry> cardCache;
 const time_t SEVEN_DAYS = 7 * 24 * 60 * 60;
 
-// Global Variables
 Rdm6300 rdm6300;
 CRGB leds[NUM_LEDS];
-WiFiMulti wifiMulti; // Create a WiFiMulti object
+WiFiMulti wifiMulti; 
 
-// Function Declarations
 void setupAccessPoint();
 void connectToWiFi();
 void setupWiFi();
@@ -61,18 +58,17 @@ void cleanCache();
 void initializeSPIFFS();
 
 int door_timer = 5000;
+int delayForCheck = 2000; 
 
 void setup() {
   Serial.begin(115200);
   pinMode(MOSFET, OUTPUT);
   digitalWrite(MOSFET, LOW);
   
-  // Initialize NVS
   preferences.begin("doorlock", false);
   initializeSPIFFS();
   loadCacheFromFile();
 
-  // Check if WiFi is configured
   if (!preferences.isKey("ssid")) {
     setupAccessPoint();
   } else {
@@ -82,7 +78,6 @@ void setup() {
   Leds_Yellow();
   setupRDM6300();
   
-  // Add your networks to the WiFiMulti object
   wifiMulti.addAP("Your_SSID", "Your_Password");
   wifiMulti.addAP("Your_SSID", "Your_Password");
   wifiMulti.addAP("Your_SSID", "Your_Password");
@@ -95,7 +90,6 @@ void setup() {
 void handleRoot() {
   String html = "<html><body><h1>ESP32 Door Lock Configuration</h1>";
   html += "<form method='post' action='/submit'>";
-  // Add form fields for SSID, password, etc.
   html += "<input type='submit' value='Save'>";
   html += "</form></body></html>";
 
@@ -104,21 +98,16 @@ void handleRoot() {
 
 
 void setupAccessPoint() {
-  // Set up the ESP32 as an Access Point
   WiFi.softAP("ESP32-DoorLock", "password");
-
-  // Start the web server
   server.on("/", HTTP_GET, handleRoot);
   server.begin();
 }
 
 void connectToWiFi() {
-  // Connect to the stored WiFi network
   String ssid = preferences.getString("ssid");
   String password = preferences.getString("password");
   WiFi.begin(ssid.c_str(), password.c_str());
 
-  // Wait for connection
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.println("Connecting to WiFi..");
@@ -149,7 +138,6 @@ void Leds_Yellow() {
 }
 
 void Leds_no_wifi_animation(){
-  //make the leds blink rapidly to indicate no wifi
   for (int i = 0; i < 5; i++) {
     fill_solid(leds, NUM_LEDS, CRGB::Red);
     FastLED.show();
@@ -161,7 +149,6 @@ void Leds_no_wifi_animation(){
 }
 
 void setupWiFi() {
-  // Replace the WiFi.begin() with wifiMulti.run()
   while (wifiMulti.run() != WL_CONNECTED) {
     delay(500);
     Serial.println("Connecting to WiFi..");
@@ -208,14 +195,14 @@ void setupRDM6300() {
 }
 
 String getMemberID(String cardID) {
-    HTTPClient http; //init http client
-    DynamicJsonDocument doc(1024); //json document for parsing response
+    HTTPClient http;
+    DynamicJsonDocument doc(1024);
 
     Serial.println("API Request for getMemberID:");
     Serial.println("https://fabman.io/api/v1/members?keyType=em4102&keyToken=" + cardID + "&limit=50");
     Serial.println("Authorization: " + String(BEARER_HEADER) + String(API_KEY));
 
-    String authHeader = String(BEARER_HEADER) + String(API_KEY); //create auth header
+    String authHeader = String(BEARER_HEADER) + String(API_KEY);
     http.begin("https://fabman.io/api/v1/members?keyType=em4102&keyToken=" + cardID + "&limit=50");
     http.addHeader("Authorization", authHeader.c_str());
     int httpResponseCode = http.GET();
@@ -231,8 +218,7 @@ String getMemberID(String cardID) {
         String memberID = doc[0]["id"].as<String>();
         return memberID;
     } else if (httpResponseCode == 409) {
-        // Handle optimistic locking conflict
-        // Fetch the latest version of the entity, merge changes, and retry
+        return "";
     }
     
     http.end();
@@ -260,9 +246,8 @@ bool checkMemberAccess(String memberID) {
             }
         }
     } else if (httpResponseCode == 429) {
-        // Handle rate limiting
-        delay(2000); // Wait for 2 seconds before retrying
-        return checkMemberAccess(memberID); // Retry the request
+        delay(delayForCheck);
+        return checkMemberAccess(memberID);
     }
     
     http.end();
@@ -345,28 +330,26 @@ void cleanCache() {
     if (currentTime - it->second.lastUsed > SEVEN_DAYS) {
       Serial.print("Removing stale card: ");
       Serial.println(it->first);
-      it = cardCache.erase(it); // Remove from memory
+      it = cardCache.erase(it);
     } else {
       ++it;
     }
   }
 
-  saveCacheToFile(); // Save updated cache to file
+  saveCacheToFile();
 }
 
 void CheckCard() {
   if (rdm6300.get_new_tag_id()) {
-    int cardCode = rdm6300.get_tag_id(); // Get the raw card code as a uint32_t
-    String cardID = "01" + String(cardCode, HEX); // Convert it to a string
+    int cardCode = rdm6300.get_tag_id();
+    String cardID = "01" + String(cardCode, HEX);
 
     Serial.print("Card ID: ");
     Serial.println(cardID);
 
-    // Check if the cardID is already in the cache
     if (cardCache.find(cardID) != cardCache.end()) {
-      // Use cached result
       Serial.println("Card found in cache.");
-      cardCache[cardID].lastUsed = time(nullptr); // Update last used timestamp
+      cardCache[cardID].lastUsed = time(nullptr);
       saveCacheToFile();
 
       if (cardCache[cardID].hasAccess) {
