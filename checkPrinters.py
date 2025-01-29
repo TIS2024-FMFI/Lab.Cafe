@@ -41,7 +41,7 @@ tlaciarne = get_printers(printers_url)
 
 while True:
 
-    if int(time.time()) % 300 == 0: # 5 min
+    if int(time.time()) % 300 == 0:
         tlaciarne = get_printers(printers_url)
 
     for tlaciaren in tlaciarne:
@@ -66,18 +66,6 @@ while True:
         octopi_printer_url = f'http://{address}/api/printer'
         headers = {'X-Api-Key': api_key}
 
-        job_data = fetch_with_retry(octopi_job_url, headers)
-        if not job_data:
-            print(f"Failed to fetch job data for printer '{name}'.")
-            data = {
-                    'topic': "Failed to fetch job data",
-                    'deviceIdentifier': name,
-                    'extra': '{"name": "", "progress": ""}',
-                }
-            
-            send_data_to_webhook(webhook_url, data, name)
-            continue
-
         printer_data = fetch_with_retry(octopi_printer_url, headers)
         if not printer_data:
             print(f"Failed to fetch printer data for printer '{name}'.")
@@ -89,7 +77,19 @@ while True:
             
             send_data_to_webhook(webhook_url, data, name)
             continue
-
+        
+        job_data = fetch_with_retry(octopi_job_url, headers)
+        if not job_data:
+            print(f"Failed to fetch job data for printer '{name}'.")
+            data = {
+                    'topic': "Failed to fetch job data",
+                    'deviceIdentifier': name,
+                    'extra': '{"name": "", "progress": ""}',
+                }
+            
+            send_data_to_webhook(webhook_url, data, name)
+            continue
+            
         topic = printer_data['state']['text']
         identifier = job_data['job']['user']
         extraDesc = job_data['job']['file']['name']
@@ -111,10 +111,9 @@ while True:
         data = {
             'topic': topic,
             'deviceIdentifier': identifier,
-            'extra': '{"name": "' + extraDesc + '", ' + progress[1:-1] + '}',
-            #'job': '{"file": {"name": "' + jobDesc + '"}}'
+            'extra': '{"name": "' + extraDesc + '", ' + progress[1:-1] + '}'
         }
 
         send_data_to_webhook(webhook_url, data, name)
 
-    time.sleep(5) #5 sec
+    time.sleep(5)
