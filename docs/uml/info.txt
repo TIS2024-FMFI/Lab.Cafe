@@ -1,1 +1,0 @@
-This directory contains UML diagrams for software design document.
