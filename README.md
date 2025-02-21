@@ -1,6 +1,6 @@
 # Lab.Cafe
 
-## Application for Registration and Access Maintenance to Devices in Lab.Cafe FabLab
+Application for Registration and Access Maintenance to Devices in Lab.Cafe FabLab
 
 ### Description
 Lab.Cafe is a café with 3D printers, where customers can bring their ideas to life. Our responsibility was to enhance the website, which manages the status of the 3D printers and stores payments. The next step was to program the door lock, which must allow customers to enter the laboratory using their cards, where the printers are located.
